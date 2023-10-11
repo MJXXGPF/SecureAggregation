@@ -155,11 +155,15 @@ int partition_pair(int lo,int hi);
 void swap_pair(int i,int j);
 void merge_sort_pair(int lo,int hi);
 void merge(int lo,int mid,int hi);
+void swap_pair2(int i,int j);
+void merge_sort_pair2(int lo,int hi);
+void merge2(int lo,int mid,int hi);
 int partition_pair(int lo,int hi);
-void swap_pair(int i,int j);
 void getSortPermJ(int size);
 void getSortPermB(int size);
+void getSortPermP(int size);
 void getB(int size);
+void  apply(int size);
 void apply1(int size);
 void apply2(int size);
 void oblivious_sort_int_new(int size);
@@ -797,6 +801,7 @@ void advance_primitive2(double * update_params, int update_params_size, int clie
 long long p_arr[2*600000];
 long long b_arr[2*600000];
 long long j_arr[2*600000];
+long long t_arr[2*600000];
 float v_arr[2*600000];
 mypair pairs[2*600000];
 float v1_arr[2*600000];//v'
@@ -890,11 +895,13 @@ void advance_primitive2_new(double * update_params, int update_params_size, int 
 	}
 	getSortPermJ(2*d);
 	getB(2*d);
-	apply1(2*d);
+	//apply1(2*d);
+	apply(2*d);
 	getSortPermB(2*d);
-	apply2(2*d);
+	//apply2(2*d);
+	apply(2*d);
 	for (int i = 0; i < d; i++){
-		update_params[i] =v2_arr[i]/client_size;
+		update_params[i] =v_arr[i]/client_size;
 	}
 	// ocall_end_time2();
 	// ocall_print_time2();
@@ -1547,7 +1554,7 @@ void swap_float(int i,int j){
 	v_arr[i]=v_arr[j];
 	v_arr[j]=t;
 }
-//mypair数组归并排序
+//mypair数组归并排序===按照value排序
 void merge_sort_pair(int lo,int hi){
 	if(lo>=hi){
 		return;
@@ -1578,6 +1585,42 @@ void merge(int lo,int mid,int hi){
 	}
 }
 void swap_pair(int i,int j){
+	mypair t=pairs[i];
+	pairs[i]=pairs[j];
+	pairs[j]=t;
+}
+
+//mypair数组归并排序===按照index排序
+void merge_sort_pair2(int lo,int hi){
+	if(lo>=hi){
+		return;
+	}
+	int mid=(lo+hi)/2;
+	merge_sort_pair2(lo,mid);
+	merge_sort_pair2(mid+1,hi);
+	merge2(lo,mid,hi);
+
+}
+void merge2(int lo,int mid,int hi){
+	int i=lo,j=mid+1,t=0;
+	while(i<=mid&&j<=hi){
+		if(pairs[i].index<=pairs[j].index){
+			tmp_p[t++]=pairs[i++];
+		}else{
+			tmp_p[t++]=pairs[j++];
+		}
+	}
+	while(i<=mid){
+		tmp_p[t++]=pairs[i++];
+	}
+	while(j<=hi){
+		tmp_p[t++]=pairs[j++];
+	}
+	for(int i=lo;i<=hi;i++){
+		pairs[i]=tmp_p[i-lo];
+	}
+}
+void swap_pair2(int i,int j){
 	mypair t=pairs[i];
 	pairs[i]=pairs[j];
 	pairs[j]=t;
@@ -1692,11 +1735,25 @@ void getSortPermB(int size){
 		pairs[i].value=b_arr[i];
 		pairs[i].index=i;
 	}
-	quick_sort_int_b(0,size-1);//排序b
+	//quick_sort_int_b(0,size-1);//排序b b可以不用排序
 	merge_sort_pair(0,size-1);
 	//oblivious_sort_mypair_new(size);
 	for(int i=0;i<size;i++){
 		p_arr[i]=pairs[i].index;
+	}
+}
+
+void getSortPermP(int size){
+	printf("=======[getSortPermP]========\n");
+	for(int i=0;i<size;i++){
+		pairs[i].index=i;
+		pairs[i].value=p_arr[i];
+	}
+	//quick_sort_int_b(0,size-1);//排序b b可以不用排序
+	merge_sort_pair(0,size-1);
+	//oblivious_sort_mypair_new(size);
+	for(int i=0;i<size;i++){
+		t_arr[i]=pairs[i].index;
 	}
 }
 void getB(int size){
@@ -1705,6 +1762,19 @@ void getB(int size){
 	for(int i=1;i<size;i++){
 		b_arr[i]=j_arr[i]==j_arr[i-1]?1:0;
 	}
+}
+
+void  apply(int size){
+	getSortPermP(size);
+	for(int i=0;i<size;i++){//attach操作 attach t and v
+		pairs[i].index=t_arr[i];
+		pairs[i].value=v_arr[i];
+	}
+	merge_sort_pair2(0,size-1);
+	for(int i=0;i<size;i++){
+		v_arr[i]=pairs[i].value;
+	}
+	
 }
 void apply1(int size){
 	printf("=======[apply1 start]========\n");
