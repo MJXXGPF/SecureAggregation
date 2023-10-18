@@ -582,72 +582,7 @@ mypair tmp_p[2*600000];
 
 
 
-//自己设计的算法 使用全局变量 all_client_data
-void advance_primitive_proposed(double * update_params, int update_params_size, int client_size, int given_num_of_sparse_parameters, int d, int size) {
-	int n = client_size, k = given_num_of_sparse_parameters;
-	int pre_idx = all_client_data[0].index;
-	float pre_val = all_client_data[0].value;
-	int dummy_idx = MAX;
-	int initialized_parameter_length = n * k;
-	int X = 0, Y = n * k - 1;
-	oblivious_sort_tuple_by_index(size);
-	printf("X=%d,Y=%d\n", X, Y);
-	for (int i = 1; i < initialized_parameter_length; i++) {
-		int flag = pre_idx == all_client_data[i].index;
-		
-		//不使用原语
-		// if (flag) {
-		// 	all_client_data[i - 1].no = Y;
-		// 	Y--;
-		// 	all_client_data[i - 1].index = MAX;
-		// 	all_client_data[i - 1].value =0.0;
-		// 	pre_idx = pre_idx;
-		// 	pre_val = pre_val + all_client_data[i].value;
-		// }
-		// else
-		// {
-		// 	all_client_data[i - 1].no = X;
-		// 	X++;
-		// 	all_client_data[i - 1].index = pre_idx;
-		// 	all_client_data[i - 1].value = pre_val;
-		// 	pre_idx = all_client_data[i].index;
-		// 	pre_val = all_client_data[i].value;
-		// }
 
-		//使用原语
-		all_client_data[i - 1].no=o_mov_int(flag,X,Y);
-		all_client_data[i - 1].index=o_mov_int(flag,pre_idx,MAX);
-		all_client_data[i - 1].value=o_mov_float(flag,pre_val,0.0);
-		pre_idx=o_mov_int(flag,all_client_data[i].index,pre_idx);
-		pre_val=o_mov_float(flag,all_client_data[i].value,pre_val + all_client_data[i].value);
-		Y=o_mov_int(flag,Y,Y-1);
-		X=o_mov_int(flag,X+1,X);
-		
-	}
-	all_client_data[initialized_parameter_length - 1].no = X;
-	all_client_data[initialized_parameter_length - 1].index = pre_idx;
-	all_client_data[initialized_parameter_length - 1].value = pre_val;
-	oblivious_sort_tuple_by_no(size);
-	//下一步：执行不经意写入算法
-	for(int i=0;i<d;i++){
-		j_arr[i]=all_client_data[i].index;
-		v_arr[i]=all_client_data[i].value;
-	}
-
-	for(int i=d;i<2*d;i++){
-		j_arr[i]=i-d;
-		v_arr[i]=0.0;
-	}
-	getSortPermJ(2*d);
-	getB(2*d);
-	apply(2*d);
-	getSortPermB(2*d);
-	apply(2*d);
-	for (int i = 0; i < d; i++){
-		update_params[i] =v_arr[i]/client_size;
-	}
-	printf("X=%d,Y=%d  0924\n", X,Y);
-}
 
 //拓展数组大小为2次幂 针对tuple
 int pad_max_idx_weight_to_power_of_two(int size) {
