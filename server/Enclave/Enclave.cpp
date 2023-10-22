@@ -91,9 +91,9 @@ void baseline(double * update_params, int update_params_size, int client_size, i
 //基础算法  二重循环遍历 累加  使用不经意原语
 void baseline_primitive(double  * update_params, int update_params_size, int client_size, int given_num_of_sparse_parameters, int d);
 //olive论文中的算法
-void advance_primitive(double  * update_params, int update_params_size, int client_size, int given_num_of_sparse_parameters, int d, int size);
+void advance_primitive(double  * update_params, int update_params_size, int client_size, int given_num_of_sparse_parameters, int d, int size,int nk);
 //提出的算法
-void advance_primitive_proposed(double * update_params, int update_params_size, int client_size, int given_num_of_sparse_parameters, int d, int size);
+void advance_primitive_proposed(double * update_params, int update_params_size, int client_size, int given_num_of_sparse_parameters, int d, int size,int nk);
 //普通聚合 不考虑内存访问模式泄露  稀疏梯度or非稀疏梯度都可聚合
 void normal_aggregate(double  * update_params, int update_params_size, int client_size, int given_num_of_sparse_parameters);
 
@@ -105,7 +105,18 @@ void o_oblivious_sort_tuple_by_no(int size);
 void oblivious_sort_tuple_by_index(int size);
 //对tuple数组(聚合数据)按照no不经意排序===>具体实现的方法
 void oblivious_sort_tuple_by_no(int size);
+//对tuple数组(聚合数据)按照id进行快排
+void quick_sort_tuple_by_id(int start, int end);
+//对tuple数组(聚合数据)按照no进行快排
+void quick_sort_tuple_by_no(int start, int end);
 
+//tuple数组按照id属性排序===归并排序
+void merge_sort_tuple_by_id(int lo,int hi);
+void merge_tuple_by_id(int lo,int mid,int hi);
+
+//tuple数组按照no属性排序===归并排序
+void merge_sort_tuple_by_no(int lo,int hi);
+void merge_tuple_by_no(int lo,int mid,int hi);
 
 //将tuple数组(聚合数据)大小拓展为2的次幂
 int pad_max_idx_weight_to_power_of_two(int size);
@@ -132,6 +143,11 @@ void merge_pair_by_value_long(int lo,int mid,int hi);
 void merge_sort_pair_by_index(int lo,int hi);
 void merge_pair_by_index(int lo,int mid,int hi);
 
+//mypair数组按照value_ll属性排序===快速排序
+void quick_sort_mypair_by_value_ll(int start, int end);
+//mypair数组按照index属性排序===快速排序
+void quick_sort_mypair_by_index(int start, int end);
+
 //mypair数组按照value_ll属性排序===bitonic排序
 void oblivious_sort_mypair_by_value_long(int size);
 void o_oblivious_sort_mypair_by_value_long(int size);
@@ -146,7 +162,8 @@ void o_swap(long long * x, long long* y, int flag);
 void o_swap(mypair * x, mypair * y, int flag);
 float o_mov(int flag, float src, float val);
 
-
+void attachJVAndSort(int size);
+void attachBVAndSort(int size);
 
 //不经意比较原语
 int o_equals(double x,double y){
@@ -338,8 +355,16 @@ extern "C" int hello() {
 }
 
 
-_tuple all_client_data[90000000];
-double arr[sz];
+_tuple all_client_data[2*600000];
+_tuple tmp[2*6];
+long long p_arr[2*6];
+long long b_arr[2*6];
+long long j_arr[2*600000];
+long long t_arr[2*6];
+float v_arr[2*600000];
+mypair pairs[2*600000];
+mypair tmp_p[2*6];
+
 
 //测试ecall调用的函数 可忽略
 void ecall_hello() {
@@ -374,12 +399,12 @@ algo: 采用的聚合算法
 void ecall_aggregate(const uint8_t * encode_data, int encode_data_size,float * _update_params, int update_params_size, int client_size,int algo) {
 
 	printf("ecall_aggregate....\n");
+	ocall_start_time();
     N=2*update_params_size+1;
 	double *update_params=(double*)malloc(sizeof(double)*update_params_size);
 	for(int i=0;i<update_params_size;i++){
 		update_params[i]=_update_params[i];
 	}
-	ocall_start_time();
 	int byte_size_per_client = encode_data_size / client_size;
 	int given_num_of_sparse_parameters = byte_size_per_client / 8;
 	printf("encode_data_size=%d\n", encode_data_size);
@@ -434,20 +459,58 @@ void ecall_aggregate(const uint8_t * encode_data, int encode_data_size,float * _
 			offset += byte_size_per_client;
 		}
 	}
-	
+
+	ocall_start_time2();
 	switch (algo) {
 	case 1:  normal_aggregate(update_params, update_params_size, client_size, given_num_of_sparse_parameters); break;
 	case 2:   baseline_primitive(update_params, update_params_size, client_size, given_num_of_sparse_parameters, update_params_size); break;
-	case 3:   advance_primitive(update_params, update_params_size, client_size, given_num_of_sparse_parameters, update_params_size, len); break;
-	case 4:   advance_primitive_proposed(update_params, update_params_size, client_size, given_num_of_sparse_parameters, update_params_size, len); break;
+	case 3:   advance_primitive(update_params, update_params_size, client_size, given_num_of_sparse_parameters, update_params_size, len,1); break;
+	case 4:   advance_primitive_proposed(update_params, update_params_size, client_size, given_num_of_sparse_parameters, update_params_size, len,1); break;
 	}
 	for(int i=0;i<update_params_size;i++){
 		_update_params[i]=update_params[i];
 	}
+	ocall_end_time2();
+	ocall_print_time2();
 	ocall_end_time();
 }
 
 
+double update_params[50890];
+
+void ecall_aggregate_test(int d,int k,int n,int algo,int nk){
+	printf("ecall_aggregate_test\n");
+	//double *update_params=(double*)malloc(sizeof(double)*d);
+	// for(int i=0;i<update_params_size;i++){
+	// 	update_params[i]=_update_params[i];
+	// }
+	int len = -1;
+	if (algo == 3)
+		len = nk + d;
+	else
+		len = nk;
+	//nk=n*k;
+	int update_params_size=d,client_size=n,given_num_of_sparse_parameters=k;
+	printf("d=%d\n",update_params_size);
+	printf("n=%d\n",client_size);
+	printf("k=%d\n",given_num_of_sparse_parameters);
+	printf("algo=%d\n",algo);
+	printf("len=%d\n",len);
+	// ocall_start_time2();
+	switch (algo) {
+	case 1:  normal_aggregate(update_params, update_params_size, client_size, given_num_of_sparse_parameters); break;
+	case 2:   baseline_primitive(update_params, update_params_size, client_size, given_num_of_sparse_parameters, update_params_size); break;
+	case 3:   advance_primitive(update_params, update_params_size, client_size, given_num_of_sparse_parameters, update_params_size, len,nk); break;
+	case 4:   advance_primitive_proposed(update_params, update_params_size, client_size, given_num_of_sparse_parameters, update_params_size, len,nk); break;
+	}
+	// for(int i=0;i<update_params_size;i++){
+	// 	update_params[i]=update_params[i];
+	// }
+	// ocall_end_time2();
+	// ocall_print_time2();
+	//free(update_params);
+	//printf("===============================================algo%d\n",algo);
+}
 
 //普通聚合 可以应用于稀疏梯度  也可以应用于非稀疏梯度
 void normal_aggregate(double * update_params, int update_params_size, int client_size, int given_num_of_sparse_parameters) {
@@ -511,7 +574,7 @@ void baseline_primitive(double* update_params, int update_params_size, int clien
                 //     z=x;
                 // }
 				update_params[k] = z;
-				// float *tmp = &z;//0611 不加这一行好像数据有问题？？？ ans: 因为之前的mov需要8字节导致
+				// float *tmp = &z;//0611 不加这一行好像数据有问题？？？ ans: 因为之前的o_mov需要8字节导致
 			}
 			idx++;
 		}
@@ -524,14 +587,22 @@ void baseline_primitive(double* update_params, int update_params_size, int clien
 
 
 //olive论文中的advance算法
-void advance_primitive(double  * update_params, int update_params_size, int client_size, int given_num_of_sparse_parameters, int d, int size) {
+void advance_primitive(double  * update_params, int update_params_size, int client_size, int given_num_of_sparse_parameters, int d, int size,int nk) {
 	int n = client_size, k = given_num_of_sparse_parameters;
-	for (int i = n * k, idx = 0; i < size; i++) {
+	// for (int i = n * k, idx = 0; i < size; i++) {
+	// 	all_client_data[i].index = idx;
+	// 	all_client_data[i].value = 0.0;
+	// 	idx++;
+	// }
+	printf("nk=%d, size=%d  size-nk=%d\n",nk,size,size-nk);
+	for (int i = nk, idx = 0; i < size; i++) {
 		all_client_data[i].index = idx;
 		all_client_data[i].value = 0.0;
 		idx++;
 	}
-	oblivious_sort_tuple_by_index(size);
+	//oblivious_sort_tuple_by_index(size);
+	//quick_sort_tuple_by_id(0,size-1);
+	merge_sort_tuple_by_id(0,size-1);
 	int pre_idx = all_client_data[0].index;
 	float pre_val = all_client_data[0].value;
 	int dummy_idx = MAX;
@@ -540,31 +611,33 @@ void advance_primitive(double  * update_params, int update_params_size, int clie
 
 		int flag = pre_idx == all_client_data[i].index;
 		//不使用不经意语言的代码
-		if (flag) {
-			all_client_data[i - 1].index = MAX;
-			all_client_data[i - 1].value =0.0;
-			pre_idx = pre_idx;
-			pre_val = pre_val + all_client_data[i].value;
-		}
-		else
-		{
-			all_client_data[i - 1].index = pre_idx;
-			all_client_data[i - 1].value = pre_val;
-			pre_idx = all_client_data[i].index;
-			pre_val = all_client_data[i].value;
-		}
+		// if (flag) {
+		// 	all_client_data[i - 1].index = MAX;
+		// 	all_client_data[i - 1].value =0.0;
+		// 	pre_idx = pre_idx;
+		// 	pre_val = pre_val + all_client_data[i].value;
+		// }
+		// else
+		// {
+		// 	all_client_data[i - 1].index = pre_idx;
+		// 	all_client_data[i - 1].value = pre_val;
+		// 	pre_idx = all_client_data[i].index;
+		// 	pre_val = all_client_data[i].value;
+		// }
 
 
 		//使用不经意语言的代码
-		// all_client_data[i - 1].index=o_mov_int(flag,pre_idx,MAX);
-		// all_client_data[i - 1].value=o_mov_float(flag,pre_val,0.0);
-		// pre_idx=o_mov_int(flag,all_client_data[i].index,pre_idx);
-		// pre_val=o_mov_float(flag,all_client_data[i].value,pre_val + all_client_data[i].value);
+		all_client_data[i - 1].index=o_mov_int(flag,pre_idx,MAX);
+		all_client_data[i - 1].value=o_mov_float(flag,pre_val,0.0);
+		pre_idx=o_mov_int(flag,all_client_data[i].index,pre_idx);
+		pre_val=o_mov_float(flag,all_client_data[i].value,pre_val + all_client_data[i].value);
 	}
 
 	all_client_data[initialized_parameter_length - 1].index = pre_idx;
 	all_client_data[initialized_parameter_length - 1].value = pre_val;
-	oblivious_sort_tuple_by_no(size);
+	//oblivious_sort_tuple_by_index(size);
+	//quick_sort_tuple_by_id(0,size-1);
+	merge_sort_tuple_by_id(0,size-1);
 	for (int i = 0; i < d; i++) {
 		update_params[i] = all_client_data[i].value;
 		update_params[i] /= client_size;
@@ -572,17 +645,84 @@ void advance_primitive(double  * update_params, int update_params_size, int clie
 }
 
 
-long long p_arr[2*600000];
-long long b_arr[2*600000];
-long long j_arr[2*600000];
-long long t_arr[2*600000];
-float v_arr[2*600000];
-mypair pairs[2*600000];
-mypair tmp_p[2*600000];
 
 
 
 
+//自己设计的算法 使用全局变量 all_client_data
+void advance_primitive_proposed(double * update_params, int update_params_size, int client_size, int given_num_of_sparse_parameters, int d, int size,int nk) {
+	int n = client_size, k = given_num_of_sparse_parameters;
+	int pre_idx = all_client_data[0].index;
+	float pre_val = all_client_data[0].value;
+	int dummy_idx = MAX;
+	printf("nk=%d, size=%d\n",nk,size);
+	int initialized_parameter_length = size;
+	//int X = 0, Y =size - 1;
+	int X = 0, Y = nk - 1;
+	//oblivious_sort_tuple_by_index(size);
+	//quick_sort_tuple_by_id(0,size-1);
+	merge_sort_tuple_by_id(0,size-1);
+	printf("X=%d,Y=%d\n", X, Y);
+	for (int i = 1; i < initialized_parameter_length; i++) {
+		int flag = pre_idx == all_client_data[i].index;
+		
+		//不使用原语
+		// if (flag) {
+		// 	all_client_data[i - 1].no = Y;
+		// 	Y--;
+		// 	all_client_data[i - 1].index = MAX;
+		// 	all_client_data[i - 1].value =0.0;
+		// 	pre_idx = pre_idx;
+		// 	pre_val = pre_val + all_client_data[i].value;
+		// }
+		// else
+		// {
+		// 	all_client_data[i - 1].no = X;
+		// 	X++;
+		// 	all_client_data[i - 1].index = pre_idx;
+		// 	all_client_data[i - 1].value = pre_val;
+		// 	pre_idx = all_client_data[i].index;
+		// 	pre_val = all_client_data[i].value;
+		// }
+
+		//使用原语
+		all_client_data[i - 1].no=o_mov_int(flag,X,Y);
+		all_client_data[i - 1].index=o_mov_int(flag,pre_idx,MAX);
+		all_client_data[i - 1].value=o_mov_float(flag,pre_val,0.0);
+		pre_idx=o_mov_int(flag,all_client_data[i].index,pre_idx);
+		pre_val=o_mov_float(flag,all_client_data[i].value,pre_val + all_client_data[i].value);
+		Y=o_mov_int(flag,Y,Y-1);
+		X=o_mov_int(flag,X+1,X);
+		
+	}
+	all_client_data[initialized_parameter_length - 1].no = X;
+	all_client_data[initialized_parameter_length - 1].index = pre_idx;
+	all_client_data[initialized_parameter_length - 1].value = pre_val;
+	//oblivious_sort_tuple_by_no(size);
+	//quick_sort_tuple_by_no(0,size-1);
+	merge_sort_tuple_by_id(0,size-1);
+	//下一步：执行不经意写入算法
+	for(int i=0;i<d;i++){
+		j_arr[i]=all_client_data[i].index;
+		v_arr[i]=all_client_data[i].value;
+	}
+
+	for(int i=d;i<2*d;i++){
+		j_arr[i]=i-d;
+		v_arr[i]=0.0;
+	}
+	// getSortPermJ(2*d);
+	// getB(2*d);
+	// apply(2*d);
+	// getSortPermB(2*d);
+	// apply(2*d);
+	attachJVAndSort(2*d);
+	attachBVAndSort(2*d);
+	for (int i = 0; i < d; i++){
+		update_params[i] =v_arr[i]/client_size;
+	}
+	printf("X=%d,Y=%d  0924\n", X,Y);
+}
 
 //拓展数组大小为2次幂 针对tuple
 int pad_max_idx_weight_to_power_of_two(int size) {
@@ -698,6 +838,164 @@ void o_oblivious_sort_tuple_by_no(int size) {
 	}
 }
 
+void quick_sort_tuple_by_id(int start, int end) {
+
+    if (start >= end) {
+        return;  // 如果数组只有一个元素或为空，直接返回
+    }
+    
+    _tuple pivot = all_client_data[start];  // 以第一个元素为基准
+    int i = start, j = end;
+    while (i < j) {
+        while (i < j && all_client_data[j].index >= pivot.index) {
+            j--;  // 从右往左找到第一个小于基准的元素
+        }
+        all_client_data[i] = all_client_data[j];
+		
+        while (i < j && all_client_data[i].index <= pivot.index) {
+            i++;  // 从左往右找到第一个大于基准的元素
+        }
+        all_client_data[j] = all_client_data[i];
+    }
+    // arr[i] = pivot;  // 将基准放到最终位置
+	all_client_data[i] = pivot;
+    quick_sort_tuple_by_id(start, i - 1);  // 对左侧子数组递归排序
+    quick_sort_tuple_by_id(i + 1, end);  // 对右侧子数组递归排序
+
+}
+void quick_sort_tuple_by_no(int start, int end) {
+    if (start >= end) {
+        return;  // 如果数组只有一个元素或为空，直接返回
+    }
+    
+    _tuple pivot = all_client_data[start];  // 以第一个元素为基准
+    int i = start, j = end;
+    while (i < j) {
+        while (i < j && all_client_data[j].no >= pivot.no) {
+            j--;  // 从右往左找到第一个小于基准的元素
+        }
+        all_client_data[i] = all_client_data[j];
+        while (i < j && all_client_data[i].no <= pivot.no) {
+            i++;  // 从左往右找到第一个大于基准的元素
+        }
+        all_client_data[j] = all_client_data[i];
+    }
+    // arr[i] = pivot;  // 将基准放到最终位置
+	all_client_data[i]= pivot;
+    quick_sort_tuple_by_no(start, i - 1);  // 对左侧子数组递归排序
+    quick_sort_tuple_by_no(i + 1, end);  // 对右侧子数组递归排序
+	
+}
+
+void quick_sort_mypair_by_value_ll(int start, int end) {
+
+    if (start >= end) {
+        return;  // 如果数组只有一个元素或为空，直接返回
+    }
+    
+    mypair pivot = pairs[start];  // 以第一个元素为基准
+    int i = start, j = end;
+    while (i < j) {
+        while (i < j && pairs[j].value_ll >= pivot.value_ll) {
+            j--;  // 从右往左找到第一个小于基准的元素
+        }
+		pairs[i]=pairs[j];
+        while (i < j && pairs[i].value_ll <= pivot.value_ll) {
+            i++;  // 从左往右找到第一个大于基准的元素
+        }
+		pairs[j]=pairs[i];
+    }
+    // arr[i] = pivot;  // 将基准放到最终位置
+	 pairs[i]=pivot;
+    quick_sort_mypair_by_value_ll(start, i - 1);  // 对左侧子数组递归排序
+    quick_sort_mypair_by_value_ll(i + 1, end);  // 对右侧子数组递归排序
+
+}
+void quick_sort_mypair_by_index(int start, int end) {
+    if (start >= end) {
+        return;  // 如果数组只有一个元素或为空，直接返回
+    }
+    
+    mypair pivot = pairs[start];  // 以第一个元素为基准
+    int i = start, j = end;
+    while (i < j) {
+        while (i < j &&  pairs[j].index >= pivot.index) {
+            j--;  // 从右往左找到第一个小于基准的元素
+        }
+		pairs[i]=pairs[j];
+        while (i < j && pairs[i].index <= pivot.index) {
+            i++;  // 从左往右找到第一个大于基准的元素
+        }
+		pairs[j]=pairs[i];
+    }
+    // arr[i] = pivot;  // 将基准放到最终位置
+	 pairs[i]=pivot;
+    quick_sort_mypair_by_index(start, i - 1);  // 对左侧子数组递归排序
+    quick_sort_mypair_by_index(i + 1, end);  // 对右侧子数组递归排序
+	
+}
+
+//tuple数组归并排序===按照id排序
+void merge_sort_tuple_by_id(int lo,int hi){
+	if(lo>=hi){
+		return;
+	}
+	int mid=(lo+hi)/2;
+	merge_sort_tuple_by_id(lo,mid);
+	merge_sort_tuple_by_id(mid+1,hi);
+	merge_tuple_by_id(lo,mid,hi);
+
+}
+void merge_tuple_by_id(int lo,int mid,int hi){
+	int i=lo,j=mid+1,t=0;
+	while(i<=mid&&j<=hi){
+		if(all_client_data[i].index<=all_client_data[j].index){
+			tmp[t++]=all_client_data[i++];
+		}else{
+			tmp[t++]=all_client_data[j++];
+		}
+	}
+	while(i<=mid){
+		tmp[t++]=all_client_data[i++];
+	}
+	while(j<=hi){
+		tmp[t++]=all_client_data[j++];
+	}
+	for(int i=lo;i<=hi;i++){
+		all_client_data[i]=tmp[i-lo];
+	}
+}
+
+//tuple数组归并排序===按照no排序
+void merge_sort_tuple_by_no(int lo,int hi){
+	if(lo>=hi){
+		return;
+	}
+	int mid=(lo+hi)/2;
+	merge_sort_tuple_by_no(lo,mid);
+	merge_sort_tuple_by_no(mid+1,hi);
+	merge_tuple_by_no(lo,mid,hi);
+
+}
+void merge_tuple_by_no(int lo,int mid,int hi){
+	int i=lo,j=mid+1,t=0;
+	while(i<=mid&&j<=hi){
+		if(all_client_data[i].no<=all_client_data[j].no){
+			tmp[t++]=all_client_data[i++];
+		}else{
+			tmp[t++]=all_client_data[j++];
+		}
+	}
+	while(i<=mid){
+		tmp[t++]=all_client_data[i++];
+	}
+	while(j<=hi){
+		tmp[t++]=all_client_data[j++];
+	}
+	for(int i=lo;i<=hi;i++){
+		all_client_data[i]=tmp[i-lo];
+	}
+}
 
 
 //mypair数组归并排序===按照value排序
@@ -856,8 +1154,9 @@ void getSortPermJ(int size){
 		pairs[i].value_ll=j_arr[i]*N+i;
 		pairs[i].index=i;
 	}
-	//merge_sort_pair(0,size-1);
-	oblivious_sort_mypair_by_value_long(size);
+	merge_sort_pair_by_value_long(0,size-1);
+	//quick_sort_mypair_by_value_ll(0,size-1);
+	//oblivious_sort_mypair_by_value_long(size);
 	for(int i=0;i<size;i++){
 		p_arr[i]=pairs[i].index;
 		j_arr[i]=(pairs[i].value_ll-pairs[i].index)/N;//恢复j[i]的原始值
@@ -868,7 +1167,8 @@ void getSortPermB(int size){
 		pairs[i].value_ll=b_arr[i]*N+i;
 		pairs[i].index=i;
 	}
-	//merge_sort_pair(0,size-1);
+	//merge_sort_pair_by_value_long(0,size-1);
+	//quick_sort_mypair_by_value_ll(0,size-1);
 	oblivious_sort_mypair_by_value_long(size);
 	for(int i=0;i<size;i++){
 		p_arr[i]=pairs[i].index;
@@ -880,7 +1180,8 @@ void getSortPermP(int size){
 		pairs[i].index=i;
 		pairs[i].value_ll=p_arr[i];
 	}
-	//merge_sort_pair(0,size-1);
+	//merge_sort_pair_by_value_long(0,size-1);
+	//quick_sort_mypair_by_value_ll(0,size-1);
 	oblivious_sort_mypair_by_value_long(size);
 	for(int i=0;i<size;i++){
 		t_arr[i]=pairs[i].index;
@@ -900,9 +1201,37 @@ void  apply(int size){
 		pairs[i].index=t_arr[i];
 		pairs[i].value=v_arr[i];
 	}
-	oblivious_sort_mypair_by_index(size);
+	merge_sort_pair_by_index(0,size-1);
+	//quick_sort_mypair_by_index(0,size-1);
+	//oblivious_sort_mypair_by_index(size);
 	for(int i=0;i<size;i++){
 		v_arr[i]=pairs[i].value;
 	}
-	
+}
+void attachJVAndSort(int size){
+	for(int i=0;i<size;i++){
+		pairs[i].index=i;
+		pairs[i].value=v_arr[i];
+		pairs[i].value_ll=j_arr[i]*N+i;
+	}
+	//oblivious_sort_mypair_by_value_long(size);
+	merge_sort_pair_by_value_long(0,size-1);
+}
+void attachBVAndSort(int size){
+	long long b=0;
+	//b_arr[0]=0;
+	long long pre=(pairs[0].value_ll-pairs[0].index)/N;
+	pairs[0].index=0;
+	pairs[0].value_ll=b*N+0;
+	for(int i=1;i<size;i++){
+		b=((pairs[i].value_ll-pairs[i].index)/N==pre?1:0);
+		pre=(pairs[i].value_ll-pairs[i].index)/N;
+		pairs[i].index=i;
+		pairs[i].value_ll=b*N+i;
+	}
+	//oblivious_sort_mypair_by_value_long(size);
+	merge_sort_pair_by_value_long(0,size-1);
+	for(int i=0;i<size;i++){
+		v_arr[i]=pairs[i].value;
+	}
 }
