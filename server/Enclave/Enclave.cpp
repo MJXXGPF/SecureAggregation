@@ -885,36 +885,7 @@ void oblivious_sort_tuple_by_index(int size) {
 	}
 }
 
-//根据index排序排序tuple类型的all_client_data
-void o_oblivious_sort_tuple_by_index(int size) {
-	int half_size = size >> 1;
-	int i = 2;
-	while (i <= size) {
-		int j = i >> 1;
-		while (j > 0) {
-			int ml = j - 1;
-			int mh = ~ml;
-			for (int k = 0; k < half_size; k++) {
-				int l = ((k & mh) << 1) | (k & ml);
-				int m = l + j;
-				int cond1 = cond1 = (l & i) == 0;
-				int cond2 = all_client_data[l].index < all_client_data[m].index;
-				//no(4 byte) index(4 byte)  value(8 byte)
-				o_swap_int((cond1 ^ cond2), &all_client_data[l].index, &all_client_data[m].index);
-			
 
-				//普通交换代码
-				// if (cond1 ^ cond2) {
-				// 	_tuple tmp=all_client_data[l];
-				// 	all_client_data[l]=all_client_data[m];
-				// 	all_client_data[m]=tmp;
-				// }
-			}
-			j >>= 1;
-		}
-		i <<= 1;
-	}
-}
 
 
 
